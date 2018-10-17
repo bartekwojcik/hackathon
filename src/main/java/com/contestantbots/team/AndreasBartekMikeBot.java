@@ -1,13 +1,16 @@
 package com.contestantbots.team;
 
+import com.contestantbots.util.BasicMoveImpl;
 import com.contestantbots.util.GameStateLogger;
 import com.scottlogic.hackathon.client.Client;
 import com.scottlogic.hackathon.game.Bot;
+import com.scottlogic.hackathon.game.Direction;
 import com.scottlogic.hackathon.game.GameState;
 import com.scottlogic.hackathon.game.Move;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class AndreasBartekMikeBot extends Bot {
     private final GameStateLogger gameStateLogger;
@@ -20,7 +23,20 @@ public class AndreasBartekMikeBot extends Bot {
     @Override
     public List<Move> makeMoves(final GameState gameState) {
         gameStateLogger.process(gameState);
-        return new ArrayList<>();
+        List<Move> moves = new ArrayList<>();
+        moves.addAll(doExplore(gameState));
+
+        return moves;
+    }
+
+    private List<Move> doExplore(final GameState gameState) {
+        List<Move> exploreMoves = new ArrayList<>();
+
+        exploreMoves.addAll(gameState.getPlayers().stream()
+        .map(player -> new BasicMoveImpl(player.getId(), Direction.NORTH))
+        .collect(Collectors.toList()));
+
+        return exploreMoves;
     }
 
 
