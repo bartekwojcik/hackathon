@@ -2,6 +2,7 @@ package com.contestantbots.team;
 
 import com.contestantbots.util.BasicMoveImpl;
 import com.contestantbots.util.GameStateLogger;
+import com.contestantbots.util.Route;
 import com.scottlogic.hackathon.client.Client;
 import com.scottlogic.hackathon.game.Bot;
 import com.scottlogic.hackathon.game.Direction;
@@ -74,6 +75,8 @@ public class AndreasBartekMikeBot extends Bot {
                                  final Map<Player, Position> assignedPlayerDestinations,
                                  final List<Position> nextPositions) {
 
+        List<Move> collectMoves = new ArrayList<>();
+
         Set<Position> collectablePositions = gameState.getCollectables().stream()
         .map(collectable -> collectable.getPosition())
         .collect(Collectors.toSet());
@@ -81,9 +84,37 @@ public class AndreasBartekMikeBot extends Bot {
         .filter(player -> isMyPlayer(player))
         .collect(Collectors.toSet());
 
-        List<Move> collectMoves = new ArrayList<>();
+        List<Route> collectableRoutes = new ArrayList<>();
+        for (Position collectablePosition : collectablePositions) {
+            for (Player player : players) {
+                int distance = gameState.getMap().distance(player.getPosition(), collectablePosition);
+                Route route = new Route(player, collectablePosition, distance);
+                collectableRoutes.add(route);
+            }
+        }
+
+        Collections.sort(collectableRoutes);
+
+        for (Route route : collectableRoutes) {
+            if (!assignedPlayerDestinations.containsKey(route.getPlayer())
+            && !assignedPlayerDestinations.containsValue(route.getDestination())) {
+                Optional<Direction> direction = gameState.getMap().directionsTowards(route.getPlayer().getPosition(), route.getDestination()).findFirst();
+                if (direction.isPresent() && canMove(gameState, nextPositions, route.getPlayer(), direction.get())) {
+                    collectMoves.add(new BasicMoveImpl(route.getPlayer().getId(), direction.get()));
+                    assignedPlayerDestinations.put(route.getPlayer(), route.getDestination());
+                }
+            }
+        }
+
+
+
+
         System.out.println(collectMoves.size() + " players collecting");
         return collectMoves;
+    }
+
+    private boolean isMyPlayer(final Player player) {
+        return player.getOwner().equals(getId());
     }
 
 
