@@ -1,6 +1,6 @@
 package com.contestantbots.team;
 
-import com.contestantbots.util.BasicMoveImpl;
+import com.contestantbots.util.MoveImpl;
 import com.contestantbots.util.GameStateLogger;
 import com.contestantbots.util.Route;
 import com.scottlogic.hackathon.client.Client;
@@ -20,6 +20,7 @@ import java.util.stream.Stream;
 public class AndreasBartekMikeBot extends Bot {
     private final GameStateLogger gameStateLogger;
     private Set<Position> unseenPositions = new HashSet<>();
+    private Set<Position> enemySpawnPointPositions = new HashSet<>();
 
     public AndreasBartekMikeBot() {
         super("we are here for pizza");
@@ -43,11 +44,13 @@ public class AndreasBartekMikeBot extends Bot {
         List<Position> nextPositions = new ArrayList<>();
         Map<Player, Position> assignedPlayerDestinations = new HashMap<>();
 
+        updateEnemySpawnPointLocations(gameState);
         updateUnseenLocations(gameState);
 
         moves.addAll(doCollect(gameState, assignedPlayerDestinations, nextPositions));
         moves.addAll(doExplore(gameState,nextPositions));
         moves.addAll(doExploreUnseen(gameState, assignedPlayerDestinations, nextPositions));
+        moves.addAll(doAttack(gameState, assignedPlayerDestinations, nextPositions));
 
         return moves;
     }
@@ -84,7 +87,7 @@ public class AndreasBartekMikeBot extends Bot {
         do {
             direction = Direction.random();
         } while (!canMove(gameState, nextPositions, player, direction));
-        return new BasicMoveImpl(player.getId(), direction);
+        return new MoveImpl(player.getId(), direction);
     }
 
     private List<Move> doCollect(final GameState gameState,
@@ -118,15 +121,11 @@ public class AndreasBartekMikeBot extends Bot {
             && !assignedPlayerDestinations.containsValue(route.getDestination())) {
                 Optional<Direction> direction = gameState.getMap().directionsTowards(route.getPlayer().getPosition(), route.getDestination()).findFirst();
                 if (direction.isPresent() && canMove(gameState, nextPositions, route.getPlayer(), direction.get())) {
-                    collectMoves.add(new BasicMoveImpl(route.getPlayer().getId(), direction.get()));
+                    collectMoves.add(new MoveImpl(route.getPlayer().getId(), direction.get()));
                     assignedPlayerDestinations.put(route.getPlayer(), route.getDestination());
                 }
             }
         }
-
-
-
-
 
         System.out.println(collectMoves.size() + " players collecting");
         return collectMoves;
@@ -155,12 +154,31 @@ public class AndreasBartekMikeBot extends Bot {
             Optional<Direction> direction = gameState.getMap().directionsTowards(route.getPlayer().getPosition(), route.getDestination()).findFirst();
             if (direction.isPresent() && canMove(gameState, nextPositions, route.getPlayer(), direction.get())) {
                 assignedPlayerDestinations.put(route.getPlayer(), route.getDestination());
-                return new BasicMoveImpl(route.getPlayer().getId(), direction.get());
+                return new MoveImpl(route.getPlayer().getId(), direction.get());
             }
             return null;
         })
         .filter(move -> move != null)
         .collect(Collectors.toList());
+    }
+
+    private List<Move> doAttack(final GameState gameState, final Map<Player, Position> assignedPlayerDestinations,
+                                final List<Position> nextPositions) {
+        List<Move> attackMoves = new ArrayList<>();
+
+        Set<Player> players = gameState.getPlayers().stream()
+        .filter(player -> isMyPlayer(player))
+        .filter(player -> !assignedPlayerDestinations.containsKey(player.getId()))
+        .collect(Collectors.toSet());
+        System.out.println(players.size() + " players available to attack");
+
+        List<Route> attackRoutes = generateRoutes(gameState, players, enemySpawnPointPositions);
+
+        Collections.sort(attackRoutes);
+        attackMoves.addAll(assignRoutes(gameState, assignedPlayerDestinations, nextPositions, attackRoutes));
+
+        System.out.println(attackMoves.size() + " players attacking");
+        return attackMoves;
     }
 
 
@@ -204,6 +222,18 @@ public class AndreasBartekMikeBot extends Bot {
 
         System.out.println(exploreMoves.size() + " players exploring unseen");
         return exploreMoves;
+    }
+
+    private void updateEnemySpawnPointLocations(final GameState gameState) {
+        enemySpawnPointPositions.addAll(gameState.getSpawnPoints().stream()
+        .filter(spawnPoint -> !spawnPoint.getOwner().equals(getId()))
+        .map(spawnPoint -> spawnPoint.getPosition())
+        .collect(Collectors.toList()));
+
+        enemySpawnPointPositions.removeAll(gameState.getRemovedSpawnPoints().stream()
+        .filter(spawnPoint -> !spawnPoint.getOwner().equals(getId()))
+        .map(spawnPoint -> spawnPoint.getPosition())
+        .collect(Collectors.toList()));
     }
 
 
