@@ -14,13 +14,26 @@ import com.scottlogic.hackathon.game.Position;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class AndreasBartekMikeBot extends Bot {
     private final GameStateLogger gameStateLogger;
+    private Set<Position> unseenPositions = new HashSet<>();
 
     public AndreasBartekMikeBot() {
         super("we are here for pizza");
         gameStateLogger = new GameStateLogger(getId());
+    }
+
+    @Override
+    public void initialise(GameState initialGameState) {
+        // add all positions to the unseen set
+        for (int x = 0; x < initialGameState.getMap().getWidth(); x++) {
+            for (int y = 0; y < initialGameState.getMap().getHeight(); y++) {
+                unseenPositions.add(new Position(x, y));
+            }
+        }
     }
 
     @Override
@@ -30,8 +43,11 @@ public class AndreasBartekMikeBot extends Bot {
         List<Position> nextPositions = new ArrayList<>();
         Map<Player, Position> assignedPlayerDestinations = new HashMap<>();
 
+        updateUnseenLocations(gameState);
+
         moves.addAll(doCollect(gameState, assignedPlayerDestinations, nextPositions));
         moves.addAll(doExplore(gameState,nextPositions));
+        moves.addAll(doExploreUnseen(gameState, assignedPlayerDestinations, nextPositions));
 
         return moves;
     }
@@ -39,7 +55,7 @@ public class AndreasBartekMikeBot extends Bot {
     private List<Move> doExplore(final GameState gameState,final List<Position> nextPositions) {
 
         List<Move> exploreMoves = new ArrayList<>();
-        Map<Player, Position> assignedPlayerDestinations = new HashMap<>();
+
         exploreMoves.addAll(gameState.getPlayers().stream()
         .map(player -> doMove(gameState, nextPositions, player))
         .collect(Collectors.toList()));
@@ -84,7 +100,9 @@ public class AndreasBartekMikeBot extends Bot {
         .filter(player -> isMyPlayer(player))
         .collect(Collectors.toSet());
 
-        List<Route> collectableRoutes = new ArrayList<>();
+        List<Route> collectableRoutes = generateRoutes(gameState, players, collectablePositions);
+        collectMoves.addAll(assignRoutes(gameState, assignedPlayerDestinations, nextPositions, collectableRoutes));
+
         for (Position collectablePosition : collectablePositions) {
             for (Player player : players) {
                 int distance = gameState.getMap().distance(player.getPosition(), collectablePosition);
@@ -109,6 +127,7 @@ public class AndreasBartekMikeBot extends Bot {
 
 
 
+
         System.out.println(collectMoves.size() + " players collecting");
         return collectMoves;
     }
@@ -116,6 +135,77 @@ public class AndreasBartekMikeBot extends Bot {
     private boolean isMyPlayer(final Player player) {
         return player.getOwner().equals(getId());
     }
+
+    private List<Route> generateRoutes(final GameState gameState, Set<Player> players, Set<Position> destinations) {
+        List<Route> routes = new ArrayList<>();
+        for (Position destination : destinations) {
+            for (Player player : players) {
+                int distance = gameState.getMap().distance(player.getPosition(), destination);
+                Route route = new Route(player, destination, distance);
+                routes.add(route);
+            }
+        }
+        return routes;
+    }
+
+    private List<Move> assignRoutes(final GameState gameState, final Map<Player, Position> assignedPlayerDestinations, final List<Position> nextPositions, List<Route> routes) {
+        return routes.stream()
+        .filter(route -> !assignedPlayerDestinations.containsKey(route.getPlayer())&& !assignedPlayerDestinations.containsValue(route.getDestination()))
+        .map(route -> {
+            Optional<Direction> direction = gameState.getMap().directionsTowards(route.getPlayer().getPosition(), route.getDestination()).findFirst();
+            if (direction.isPresent() && canMove(gameState, nextPositions, route.getPlayer(), direction.get())) {
+                assignedPlayerDestinations.put(route.getPlayer(), route.getDestination());
+                return new BasicMoveImpl(route.getPlayer().getId(), direction.get());
+            }
+            return null;
+        })
+        .filter(move -> move != null)
+        .collect(Collectors.toList());
+    }
+
+
+    private void updateUnseenLocations(final GameState gameState) {
+        // assume players can 'see' a distance of 5 squares
+        int visibleDistance = 5;
+        final Set<Position> visiblePositions = gameState.getPlayers()
+        .stream()
+        .filter(player -> isMyPlayer(player))
+        .map(player -> player.getPosition())
+        .flatMap(playerPosition -> getSurroundingPositions(gameState, playerPosition, visibleDistance))
+        .distinct()
+        .collect(Collectors.toSet());
+
+        // remove any positions that can be seen
+        unseenPositions.removeIf(position -> visiblePositions.contains(position));
+    }
+
+    private Stream<Position> getSurroundingPositions(final GameState gameState, final Position position, final int distance) {
+        Stream<Position> positions = Arrays.stream(Direction.values())
+        .flatMap(direction -> IntStream.rangeClosed(1, distance)
+        .mapToObj(currentDistance -> gameState.getMap().getRelativePosition(position, direction, currentDistance)));
+
+        positions = Stream.concat(Stream.of(position), positions);
+
+        return positions;
+    }
+
+    private List<Move> doExploreUnseen(final GameState gameState, final Map<Player, Position> assignedPlayerDestinations, final List<Position> nextPositions) {
+        List<Move> exploreMoves = new ArrayList<>();
+
+        Set<Player> players = gameState.getPlayers().stream()
+        .filter(player -> isMyPlayer(player))
+        .filter(player -> !assignedPlayerDestinations.containsKey(player))
+        .collect(Collectors.toSet());
+
+        List<Route> unseenRoutes = generateRoutes(gameState, players, unseenPositions);
+
+        Collections.sort(unseenRoutes);
+        exploreMoves.addAll(assignRoutes(gameState, assignedPlayerDestinations, nextPositions, unseenRoutes));
+
+        System.out.println(exploreMoves.size() + " players exploring unseen");
+        return exploreMoves;
+    }
+
 
 
     /*
