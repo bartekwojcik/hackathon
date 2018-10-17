@@ -7,9 +7,11 @@ import com.scottlogic.hackathon.game.Bot;
 import com.scottlogic.hackathon.game.Direction;
 import com.scottlogic.hackathon.game.GameState;
 import com.scottlogic.hackathon.game.Move;
+import com.scottlogic.hackathon.game.Player;
+import com.scottlogic.hackathon.game.Position;
 
-import java.util.ArrayList;
-import java.util.List;
+
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class AndreasBartekMikeBot extends Bot {
@@ -21,22 +23,67 @@ public class AndreasBartekMikeBot extends Bot {
     }
 
     @Override
-    public List<Move> makeMoves(final GameState gameState) {
+    public List<Move> makeMoves(final GameState gameState){
         gameStateLogger.process(gameState);
         List<Move> moves = new ArrayList<>();
-        moves.addAll(doExplore(gameState));
+        List<Position> nextPositions = new ArrayList<>();
+        Map<Player, Position> assignedPlayerDestinations = new HashMap<>();
+
+        moves.addAll(doCollect(gameState, assignedPlayerDestinations, nextPositions));
+        moves.addAll(doExplore(gameState,nextPositions));
 
         return moves;
     }
 
-    private List<Move> doExplore(final GameState gameState) {
-        List<Move> exploreMoves = new ArrayList<>();
+    private List<Move> doExplore(final GameState gameState,final List<Position> nextPositions) {
 
+        List<Move> exploreMoves = new ArrayList<>();
+        Map<Player, Position> assignedPlayerDestinations = new HashMap<>();
         exploreMoves.addAll(gameState.getPlayers().stream()
-        .map(player -> new BasicMoveImpl(player.getId(), Direction.NORTH))
+        .map(player -> doMove(gameState, nextPositions, player))
         .collect(Collectors.toList()));
 
         return exploreMoves;
+    }
+
+    private boolean canMove(final GameState gameState,
+                            final List<Position> nextPositions,
+                            final Player player,
+                            final Direction direction) {
+        Set<Position> outOfBounds = gameState.getOutOfBoundsPositions();
+        Position newPosition = gameState.getMap().getNeighbour(player.getPosition(), direction);
+        if (!nextPositions.contains(newPosition)
+        && !outOfBounds.contains(newPosition)) {
+            nextPositions.add(newPosition);
+            return true;
+        } else {
+            return false;
+        }
+
+    }
+
+    private Move doMove(final GameState gameState, final List<Position> nextPositions, final Player player) {
+        Direction direction;
+        do {
+            direction = Direction.random();
+        } while (!canMove(gameState, nextPositions, player, direction));
+        return new BasicMoveImpl(player.getId(), direction);
+    }
+
+    private List<Move> doCollect(final GameState gameState,
+                                 final Map<Player, Position> assignedPlayerDestinations,
+                                 final List<Position> nextPositions) {
+
+        Set<Position> collectablePositions = gameState.getCollectables().stream()
+        .map(collectable -> collectable.getPosition())
+        .collect(Collectors.toSet());
+        Set<Player> players = gameState.getPlayers().stream()
+        .filter(player -> isMyPlayer(player))
+        .collect(Collectors.toSet());
+
+        List<Move> collectMoves = new ArrayList<>();
+        System.out.println(collectMoves.size() + " players collecting");
+        return collectMoves;
     }
 
 
